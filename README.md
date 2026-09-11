@@ -1,4 +1,4 @@
-# Redis rate limiter — interview demo
+# Redis rate limiter
 
 Java 17+, Maven 3.6.3+, Spring Boot 3.5.5, Spring Web and Spring Data Redis.
 Five small Lua scripts perform atomic checks and updates in Redis. No database,
