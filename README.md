@@ -790,3 +790,41 @@ SINCE 1 hour ago
 
 If this is empty, check the selected account, active `newrelic` profile, time
 range, ingest key, and exporter errors. No Prometheus server is required.
+
+## Distributed lock comparison demo
+
+`RedisDistributedLockDemo` is a small Spring service using atomic `SET NX` with
+expiration and a fresh UUID owner for each acquisition. Its Lua unlock compares
+the owner and deletes in one operation. Plain `DEL` could delete a newer owner's
+lock after the original lease expires; separate `GET` and `DEL` also race.
+
+With Redis running (see Run above), execute the real-Redis integration demo:
+
+```sh
+mvn -Dredis.lock.integration=true -Dtest=RedisDistributedLockDemoTest test
+```
+
+Optional connection overrides: `-Dredis.host=localhost -Dredis.port=6379`.
+The two tests use independent Redis clients to model separate app instances:
+contention prevents acquisition until release, and an expired owner cannot
+delete the next owner's lock. Tests use unique keys with expiration and never
+flush Redis. Ordinary `mvn test` skips these opt-in integration tests.
+
+Example service usage:
+
+```java
+var lease = locks.tryAcquire("customer-search", Duration.ofSeconds(5));
+if (lease.isEmpty()) return; // Busy; retry or report contention.
+try {
+    // Read shared state, calculate, check, update.
+} finally {
+    locks.release(lease.get());
+}
+```
+
+The existing rate limiter performs its Redis read/refill/check/decrement/update
+in one Lua execution, so it does not need this extra lock and round trips.
+This lock demo is a single-Redis lease with no renewal or fencing: expiration
+does not stop Java work, and a paused owner can continue after a new owner
+acquires the lock. Safe unlock protects the key, not stale writes to external
+resources. It does not demonstrate fault-tolerant locking across Redis failover.
