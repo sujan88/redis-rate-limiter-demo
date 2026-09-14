@@ -1,3 +1,8 @@
 target/
 .idea/
 *.iml
+
+# Local New Relic testing credentials
+newrelic-local.properties
+
+newrelic/
