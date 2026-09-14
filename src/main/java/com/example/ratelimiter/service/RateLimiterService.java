@@ -8,6 +8,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.dao.DataAccessException;
 
 @Service
 public class RateLimiterService {
@@ -16,7 +18,12 @@ public class RateLimiterService {
     private final StringRedisTemplate redis;
     private final Map<String, DefaultRedisScript<Long>> scripts;
 
-    public RateLimiterService(StringRedisTemplate redis) {
+    private final TokenLeaseLimiter leases;
+    private final MeterRegistry metrics;
+
+    public RateLimiterService(StringRedisTemplate redis, TokenLeaseLimiter leases, MeterRegistry metrics) {
+        this.leases = leases;
+        this.metrics = metrics;
         this.redis = redis;
         scripts = List.of("fixed-window", "sliding-log", "sliding-counter",
                 "token-bucket", "leaky-bucket").stream().collect(Collectors.toMap(
@@ -28,12 +35,21 @@ public class RateLimiterService {
                 }));
     }
 
-    public boolean allow(String technique, String client) {
+    public boolean allow(String technique, String client, String service) {
         var script = scripts.get(technique);
         if (script == null) throw new IllegalArgumentException("Unknown technique. Use: " + scripts.keySet());
-        // Separate state per client AND technique; one atomic round trip per request.
-        Long result = redis.execute(script, List.of("demo:rl:" + technique + ":" + client),
-                LIMIT, WINDOW_MS, RATE, UUID.randomUUID().toString());
-        return Long.valueOf(1).equals(result);
+        if (technique.equals("token-bucket")) return leases.allow(client, service);
+        try {
+            Long result = redis.execute(script, List.of("demo:rl:" + technique + ":" + client + ":" + service),
+                    LIMIT, WINDOW_MS, RATE, UUID.randomUUID().toString());
+            boolean allowed = Long.valueOf(1).equals(result);
+            metrics.counter(allowed ? "rate_limit.allowed" : "rate_limit.denied",
+                    "technique", technique, "source", "redis").increment();
+            return allowed;
+        } catch (DataAccessException ex) {
+            metrics.counter("rate_limit.redis_error", "technique", technique).increment();
+            metrics.counter("rate_limit.denied", "technique", technique, "source", "fail_closed").increment();
+            throw ex;
+        }
     }
 }

@@ -13,11 +13,12 @@ public class DemoController {
 
     @GetMapping("/{technique}")
     public ResponseEntity<?> demo(@PathVariable String technique,
-            @RequestParam(defaultValue = "alice") String client) {
-        if (!client.matches("[A-Za-z0-9_-]{1,64}")) {
-            return ResponseEntity.badRequest().body(new Error("client must be 1-64 letters, digits, _ or -"));
+            @RequestParam(defaultValue = "alice") String client,
+            @RequestParam(defaultValue = "default") String service) {
+        if (!client.matches("[A-Za-z0-9_-]{1,64}") || !service.matches("[A-Za-z0-9_-]{1,64}")) {
+            return ResponseEntity.badRequest().body(new Error("client and service must be 1-64 letters, digits, _ or -"));
         }
-        boolean allowed = limiter.allow(technique, client);
+        boolean allowed = limiter.allow(technique, client, service);
         return ResponseEntity.status(allowed ? 200 : 429)
                 .body(new Result(technique, client, allowed, allowed ? "Request accepted" : "Rate limit exceeded"));
     }
