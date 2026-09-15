@@ -828,3 +828,20 @@ This lock demo is a single-Redis lease with no renewal or fencing: expiration
 does not stop Java work, and a paused owner can continue after a new owner
 acquires the lock. Safe unlock protects the key, not stale writes to external
 resources. It does not demonstrate fault-tolerant locking across Redis failover.
+
+### Run the lock class directly
+
+Run `RedisDistributedLockDemo.main()` in your IDE with Redis running. It prints
+acquisition, contention, expiration, and safe unlock results, then closes both
+Redis connections. Optional JVM options: `-Dredis.host=localhost -Dredis.port=6379`.
+
+From the project folder, you can also use the packaged dependencies:
+
+```sh
+mvn package
+java -Dloader.main=com.example.ratelimiter.service.RedisDistributedLockDemo \
+  -cp target/redis-rate-limiter-demo-1.0.0.jar \
+  org.springframework.boot.loader.launch.PropertiesLauncher
+```
+
+The normal executable JAR still starts `RateLimiterApplication`.
